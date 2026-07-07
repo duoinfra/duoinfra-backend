@@ -37,3 +37,17 @@ jobs:
             chmod +x gradlew
             ./gradlew bootJar
             sudo systemctl restart duoinfra-backend
+
+      - name: Notify Discord on success
+        if: success()
+        run: |
+          curl -H "Content-Type: application/json" \
+          -d '{"content": "✅ 배포 성공 - ${{ github.repository }} (${{ github.sha }})"}' \
+          ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Notify Discord on failure
+        if: failure()
+        run: |
+          curl -H "Content-Type: application/json" \
+          -d '{"content": "❌ 배포 실패 - ${{ github.repository }} (${{ github.sha }})"}' \
+          ${{ secrets.DISCORD_WEBHOOK }}

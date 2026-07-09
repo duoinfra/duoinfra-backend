@@ -16,6 +16,12 @@ spring:
 server:
   port: 8080
 
+physical-server:
+  host: ${PHYSICAL_SERVER_HOST:220.117.221.158}
+  port: ${PHYSICAL_SERVER_PORT:22}
+  username: ${PHYSICAL_SERVER_USERNAME:pi}
+  password: ${PHYSICAL_SERVER_PASSWORD}
+
 springdoc:
   api-docs:
     path: /v3/api-docs

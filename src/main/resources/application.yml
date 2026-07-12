@@ -22,6 +22,10 @@ physical-server:
   username: ${PHYSICAL_SERVER_USERNAME:pi}
   password: ${PHYSICAL_SERVER_PASSWORD}
 
+jwt:
+  secret: ${JWT_SECRET:local-development-only-jwt-secret-do-not-use-in-production}
+  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:3600000}
+
 springdoc:
   api-docs:
     path: /v3/api-docs

@@ -1,5 +1,6 @@
 package com.duoinfra.backend.container.domain;
 
+import com.duoinfra.backend.user.domain.User;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -10,6 +11,10 @@ public class Container {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User owner;
 
     @Column(nullable = false, unique = true)
     private String containerId;
@@ -42,7 +47,7 @@ public class Container {
     protected Container() {}
 
     public Container(String containerId, String host, int sshPort, String sshUsername,
-                     String sshPassword, int cpu, int memory) {
+                     String sshPassword, int cpu, int memory, User owner) {
         this.containerId = containerId;
         this.host = host;
         this.sshPort = sshPort;
@@ -52,9 +57,11 @@ public class Container {
         this.memory = memory;
         this.status = ContainerStatus.RUNNING;
         this.createdAt = LocalDateTime.now();
+        this.owner = owner;
     }
 
     public Long getId() { return id; }
+    public User getOwner() { return owner; }
     public String getContainerId() { return containerId; }
     public String getHost() { return host; }
     public int getSshPort() { return sshPort; }

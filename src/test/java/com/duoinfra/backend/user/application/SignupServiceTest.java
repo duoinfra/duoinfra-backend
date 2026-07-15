@@ -1,5 +1,6 @@
 package com.duoinfra.backend.user.application;
 
+import com.duoinfra.backend.user.domain.Role;
 import com.duoinfra.backend.user.domain.User;
 import com.duoinfra.backend.user.domain.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,7 +31,7 @@ class SignupServiceTest {
 
     @BeforeEach
     void setUp() {
-        signupService = new SignupService(userRepository, passwordEncoder);
+        signupService = new SignupService(userRepository, passwordEncoder, "admin@duoinfra.com");
     }
 
     @Test
@@ -59,5 +61,20 @@ class SignupServiceTest {
         assertThatThrownBy(() -> signupService.signup(new SignupCommand("user@example.com", "password1234", "duo", true)))
                 .isInstanceOf(DuplicateEmailException.class);
         verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("임시 관리자 이메일 목록에 등록된 이메일로 가입하면 ADMIN 권한이 부여된다")
+    void signup_tempAdminEmail_promotedToAdmin() {
+        // given
+        given(userRepository.existsByEmail("admin@duoinfra.com")).willReturn(false);
+        given(passwordEncoder.encode("password1234")).willReturn("encodedPassword");
+        given(userRepository.save(any(User.class))).willAnswer(inv -> inv.getArgument(0));
+
+        // when
+        signupService.signup(new SignupCommand("admin@duoinfra.com", "password1234", "admin", true));
+
+        // then
+        verify(userRepository).save(argThat(user -> user.getRole() == Role.ADMIN));
     }
 }

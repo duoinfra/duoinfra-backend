@@ -1,5 +1,6 @@
 package com.duoinfra.backend.container.infra;
 
+import com.duoinfra.backend.container.application.ContainerMetrics;
 import com.duoinfra.backend.container.application.DockerClient;
 import com.duoinfra.backend.container.application.DockerProvisionResult;
 import com.jcraft.jsch.ChannelExec;
@@ -95,6 +96,16 @@ public class SshDockerClient implements DockerClient {
         String output = reader.lines().collect(Collectors.joining("\n"));
         channel.disconnect();
         return output;
+    }
+
+    @Override
+    public void removeContainer(String containerId) {
+        throw new UnsupportedOperationException("미구현");
+    }
+
+    @Override
+    public ContainerMetrics getContainerMetrics(String containerId) {
+        throw new UnsupportedOperationException("미구현");
     }
 
     private String generatePassword() {

@@ -5,27 +5,23 @@ import com.duoinfra.backend.container.domain.ContainerStatus;
 
 import java.time.LocalDateTime;
 
-public record ContainerResult(
+public record ContainerSummary(
         Long id,
         String containerId,
         String host,
         int sshPort,
-        String sshUsername,
-        String sshPassword,
         int cpu,
         int memory,
         ContainerStatus status,
         LocalDateTime createdAt,
         Long ownerId
 ) {
-    public static ContainerResult from(Container container) {
-        return new ContainerResult(
+    public static ContainerSummary from(Container container) {
+        return new ContainerSummary(
                 container.getId(),
                 container.getContainerId(),
                 container.getHost(),
                 container.getSshPort(),
-                container.getSshUsername(),
-                container.getSshPassword(),
                 container.getCpu(),
                 container.getMemory(),
                 container.getStatus(),

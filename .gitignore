@@ -39,6 +39,7 @@ out/
 ### Environment ###
 .env
 .env.local
+application-local.yml
 
 ### MCP ###
 .mcp.json

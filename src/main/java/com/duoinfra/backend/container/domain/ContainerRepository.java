@@ -1,8 +1,13 @@
 package com.duoinfra.backend.container.domain;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface ContainerRepository {
     Container save(Container container);
     Optional<Container> findByContainerId(String containerId);
+    Optional<Container> findById(Long id);
+    List<Container> findAll();
+    List<Container> findAllByOwnerId(Long ownerId);
+    void delete(Container container);
 }

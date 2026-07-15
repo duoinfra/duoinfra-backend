@@ -2,6 +2,8 @@ package com.duoinfra.backend.user.infra;
 
 import com.duoinfra.backend.user.application.JwtTokenProvider;
 import com.duoinfra.backend.user.domain.Role;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,5 +38,29 @@ public class JwtTokenProviderImpl implements JwtTokenProvider {
                 .expiration(expiration)
                 .signWith(key)
                 .compact();
+    }
+
+    @Override
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
+            return true;
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    @Override
+    public Long getUserId(String token) {
+        return Long.valueOf(parseClaims(token).getSubject());
+    }
+
+    @Override
+    public Role getRole(String token) {
+        return Role.valueOf(parseClaims(token).get("role", String.class));
+    }
+
+    private Claims parseClaims(String token) {
+        return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
     }
 }

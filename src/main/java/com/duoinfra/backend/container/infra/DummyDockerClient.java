@@ -41,6 +41,7 @@ public class DummyDockerClient implements DockerClient {
         return new ContainerMetrics(
                 random.nextDouble(0, 100),
                 random.nextDouble(0, 100),
+                random.nextDouble(0, 100),
                 random.nextDouble(0, 1024),
                 random.nextDouble(0, 1024)
         );

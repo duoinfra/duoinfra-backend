@@ -194,7 +194,7 @@ class ContainerServiceTest {
         User owner = userWithId(1L);
         Container container = containerOwnedBy(100L, owner);
         given(containerRepository.findById(100L)).willReturn(Optional.of(container));
-        ContainerMetrics metrics = new ContainerMetrics(10.0, 20.0, 30.0, 40.0);
+        ContainerMetrics metrics = new ContainerMetrics(10.0, 20.0, 30.0, 40.0, 50.0);
         given(dockerClient.getContainerMetrics("docker-100")).willReturn(metrics);
 
         ContainerMetrics result = containerService.getMetrics(100L, 1L, Role.USER);

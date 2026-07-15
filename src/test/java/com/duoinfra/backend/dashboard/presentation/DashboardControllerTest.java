@@ -53,7 +53,8 @@ class DashboardControllerTest {
     @Test
     @DisplayName("GET /api/dashboard/stats - USER는 본인 서버 기준 통계를 조회한다")
     void getStats_asUser() throws Exception {
-        DashboardStats stats = new DashboardStats(2, new UsageStats(10.0, 20.0, 30.0), TrafficStats.dummy());
+        DashboardStats stats = new DashboardStats(2, new UsageStats(10.0, 20.0, 30.0),
+                List.of(new TrafficStats("2026-07", 0, 0)));
         given(dashboardService.getStats(1L, Role.USER)).willReturn(stats);
         authenticateAsUser(1L);
 
@@ -63,14 +64,17 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.usage.cpu").value(10.0))
                 .andExpect(jsonPath("$.usage.memory").value(20.0))
                 .andExpect(jsonPath("$.usage.disk").value(30.0))
-                .andExpect(jsonPath("$.traffic.inboundTraffic").value(0.0))
-                .andExpect(jsonPath("$.traffic.outboundTraffic").value(0.0));
+                .andExpect(jsonPath("$.traffic", org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.traffic[0].month").value("2026-07"))
+                .andExpect(jsonPath("$.traffic[0].inbound").value(0.0))
+                .andExpect(jsonPath("$.traffic[0].outbound").value(0.0));
     }
 
     @Test
     @DisplayName("GET /api/dashboard/stats - ADMIN은 전체 서버 기준 통계를 조회한다")
     void getStats_asAdmin() throws Exception {
-        DashboardStats stats = new DashboardStats(5, new UsageStats(15.0, 25.0, 35.0), TrafficStats.dummy());
+        DashboardStats stats = new DashboardStats(5, new UsageStats(15.0, 25.0, 35.0),
+                List.of(new TrafficStats("2026-07", 0, 0)));
         given(dashboardService.getStats(99L, Role.ADMIN)).willReturn(stats);
         authenticateAsAdmin(99L);
 

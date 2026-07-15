@@ -28,7 +28,7 @@ public class DashboardService {
                 : containerRepository.findAllByOwnerId(requesterId);
 
         UsageStats usage = calculateUsage(containers);
-        TrafficStats traffic = TrafficStats.dummy();
+        List<TrafficStats> traffic = List.of(TrafficStats.dummyForCurrentMonth());
 
         return new DashboardStats(containers.size(), usage, traffic);
     }

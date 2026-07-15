@@ -103,12 +103,13 @@ class DashboardServiceTest {
     }
 
     @Test
-    @DisplayName("traffic은 아직 더미 값을 반환한다")
-    void getStats_traffic_isDummy() {
+    @DisplayName("traffic은 현재 월 하나만 더미 값으로 반환된다")
+    void getStats_traffic_isDummyForCurrentMonth() {
         given(containerRepository.findAllByOwnerId(1L)).willReturn(Collections.emptyList());
 
         DashboardStats result = dashboardService.getStats(1L, Role.USER);
 
-        assertThat(result.traffic()).isEqualTo(TrafficStats.dummy());
+        assertThat(result.traffic()).hasSize(1);
+        assertThat(result.traffic()).containsExactly(TrafficStats.dummyForCurrentMonth());
     }
 }

@@ -36,6 +36,7 @@ class DummyDockerClientTest {
 
         assertThat(metrics.cpu()).isBetween(0.0, 100.0);
         assertThat(metrics.memory()).isBetween(0.0, 100.0);
+        assertThat(metrics.disk()).isBetween(0.0, 100.0);
         assertThat(metrics.networkIn()).isBetween(0.0, 1024.0);
         assertThat(metrics.networkOut()).isBetween(0.0, 1024.0);
     }

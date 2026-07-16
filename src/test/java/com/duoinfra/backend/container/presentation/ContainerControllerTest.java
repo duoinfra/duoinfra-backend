@@ -183,7 +183,7 @@ class ContainerControllerTest {
     @DisplayName("GET /api/servers/{id}/metrics - 본인 소유 서버의 메트릭을 조회할 수 있다")
     void getMetrics_success() throws Exception {
         given(containerService.getMetrics(100L, 1L, Role.USER))
-                .willReturn(new ContainerMetrics(10.0, 20.0, 30.0, 40.0));
+                .willReturn(new ContainerMetrics(10.0, 20.0, 30.0, 40.0, 50.0));
         authenticateAsUser(1L);
 
         mockMvc.perform(get("/api/servers/{id}/metrics", 100L))

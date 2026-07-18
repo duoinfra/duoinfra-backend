@@ -4,6 +4,8 @@ import com.duoinfra.backend.container.application.ContainerMetrics;
 import com.duoinfra.backend.container.application.DockerClient;
 import com.duoinfra.backend.container.domain.Container;
 import com.duoinfra.backend.container.domain.ContainerRepository;
+import com.duoinfra.backend.dashboard.domain.NetworkSnapshot;
+import com.duoinfra.backend.dashboard.domain.NetworkSnapshotRepository;
 import com.duoinfra.backend.user.domain.Role;
 import com.duoinfra.backend.user.domain.User;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,12 +16,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -33,11 +38,14 @@ class DashboardServiceTest {
     @Mock
     private DockerClient dockerClient;
 
+    @Mock
+    private NetworkSnapshotRepository networkSnapshotRepository;
+
     private DashboardService dashboardService;
 
     @BeforeEach
     void setUp() {
-        dashboardService = new DashboardService(containerRepository, dockerClient);
+        dashboardService = new DashboardService(containerRepository, dockerClient, networkSnapshotRepository);
     }
 
     private User userWithId(Long id) {
@@ -53,6 +61,12 @@ class DashboardServiceTest {
         return container;
     }
 
+    private NetworkSnapshot snapshotOf(Container container, double in, double out) {
+        NetworkSnapshot snapshot = new NetworkSnapshot(container, in, out);
+        ReflectionTestUtils.setField(snapshot, "recordedAt", LocalDateTime.now());
+        return snapshot;
+    }
+
     @Test
     @DisplayName("USER는 본인 소유 서버 기준으로 usage 평균을 계산한다")
     void getStats_asUser_averagesOwnContainersOnly() {
@@ -62,6 +76,8 @@ class DashboardServiceTest {
         given(containerRepository.findAllByOwnerId(1L)).willReturn(List.of(container1, container2));
         given(dockerClient.getContainerMetrics("docker-100")).willReturn(new ContainerMetrics(10, 20, 30, 0, 0));
         given(dockerClient.getContainerMetrics("docker-200")).willReturn(new ContainerMetrics(30, 40, 50, 0, 0));
+        given(networkSnapshotRepository.findByContainerIdAndRecordedAtBetween(any(), any(), any()))
+                .willReturn(Collections.emptyList());
 
         DashboardStats result = dashboardService.getStats(1L, Role.USER);
 
@@ -82,6 +98,8 @@ class DashboardServiceTest {
         given(containerRepository.findAll()).willReturn(List.of(container1, container2));
         given(dockerClient.getContainerMetrics("docker-100")).willReturn(new ContainerMetrics(10, 10, 10, 0, 0));
         given(dockerClient.getContainerMetrics("docker-200")).willReturn(new ContainerMetrics(20, 20, 20, 0, 0));
+        given(networkSnapshotRepository.findByContainerIdAndRecordedAtBetween(any(), any(), any()))
+                .willReturn(Collections.emptyList());
 
         DashboardStats result = dashboardService.getStats(99L, Role.ADMIN);
 
@@ -103,13 +121,43 @@ class DashboardServiceTest {
     }
 
     @Test
-    @DisplayName("traffic은 현재 월 하나만 더미 값으로 반환된다")
-    void getStats_traffic_isDummyForCurrentMonth() {
+    @DisplayName("traffic은 최근 6개월 목록으로 반환된다")
+    void getStats_traffic_returns6Months() {
         given(containerRepository.findAllByOwnerId(1L)).willReturn(Collections.emptyList());
 
         DashboardStats result = dashboardService.getStats(1L, Role.USER);
 
-        assertThat(result.traffic()).hasSize(1);
-        assertThat(result.traffic()).containsExactly(TrafficStats.dummyForCurrentMonth());
+        assertThat(result.traffic()).hasSize(6);
+        assertThat(result.traffic().get(5).month())
+                .isEqualTo(YearMonth.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")));
+    }
+
+    @Test
+    @DisplayName("스냅샷이 2개 이상이면 월별 트래픽 차이를 집계한다")
+    void getStats_traffic_aggregatesDeltaFromSnapshots() {
+        User owner = userWithId(1L);
+        Container container = containerOwnedBy(100L, owner);
+        given(containerRepository.findAllByOwnerId(1L)).willReturn(List.of(container));
+        given(dockerClient.getContainerMetrics("docker-100")).willReturn(new ContainerMetrics(0, 0, 0, 0, 0));
+
+        // 현재 월 스냅샷: 100MB → 300MB (delta = 200MB)
+        NetworkSnapshot first = snapshotOf(container, 100.0, 50.0);
+        NetworkSnapshot last = snapshotOf(container, 300.0, 150.0);
+
+        YearMonth now = YearMonth.now();
+        given(networkSnapshotRepository.findByContainerIdAndRecordedAtBetween(
+                eq(100L), any(), any())).willReturn(Collections.emptyList());
+        // 현재 월에만 데이터 있도록 - 마지막 월 조회에 스냅샷 주입
+        given(networkSnapshotRepository.findByContainerIdAndRecordedAtBetween(
+                eq(100L),
+                eq(now.atDay(1).atStartOfDay()),
+                eq(now.atEndOfMonth().atTime(23, 59, 59))))
+                .willReturn(List.of(first, last));
+
+        DashboardStats result = dashboardService.getStats(1L, Role.USER);
+
+        TrafficStats currentMonth = result.traffic().get(5);
+        assertThat(currentMonth.inbound()).isCloseTo(200.0, within(0.001));
+        assertThat(currentMonth.outbound()).isCloseTo(100.0, within(0.001));
     }
 }

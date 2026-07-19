@@ -3,6 +3,8 @@ package com.duoinfra.backend.container.infra;
 import com.duoinfra.backend.container.application.ContainerMetrics;
 import com.duoinfra.backend.container.application.DockerClient;
 import com.duoinfra.backend.container.application.DockerProvisionResult;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
@@ -102,12 +104,55 @@ public class SshDockerClient implements DockerClient {
 
     @Override
     public void removeContainer(String containerId) {
-        throw new UnsupportedOperationException("미구현");
+        Session session = null;
+        try {
+            session = createSession();
+            execCommand(session, "docker rm -f " + containerId);
+        } catch (Exception e) {
+            throw new ContainerProvisionException("컨테이너 삭제 실패: " + e.getMessage(), e);
+        } finally {
+            if (session != null && session.isConnected()) session.disconnect();
+        }
     }
 
     @Override
     public ContainerMetrics getContainerMetrics(String containerId) {
-        throw new UnsupportedOperationException("미구현");
+        Session session = null;
+        try {
+            session = createSession();
+            String output = execCommand(session,
+                    "docker stats " + containerId + " --no-stream --format \"{{json .}}\"").trim();
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode node = mapper.readTree(output);
+
+            double cpu = parsePercent(node.path("CPUPerc").asText("0%"));
+            double memory = parsePercent(node.path("MemPerc").asText("0%"));
+            double[] net = parseNetworkIO(node.path("NetIO").asText("0B / 0B"));
+
+            return new ContainerMetrics(cpu, memory, 0.0, net[0], net[1]);
+        } catch (Exception e) {
+            throw new ContainerProvisionException("메트릭 조회 실패: " + e.getMessage(), e);
+        } finally {
+            if (session != null && session.isConnected()) session.disconnect();
+        }
+    }
+
+    private double parsePercent(String value) {
+        return Double.parseDouble(value.replace("%", "").trim());
+    }
+
+    private double[] parseNetworkIO(String value) {
+        String[] parts = value.split("/");
+        return new double[]{ parseBytes(parts[0].trim()), parseBytes(parts[1].trim()) };
+    }
+
+    private double parseBytes(String value) {
+        value = value.trim();
+        if (value.endsWith("GB")) return Double.parseDouble(value.replace("GB", "")) * 1024;
+        if (value.endsWith("MB")) return Double.parseDouble(value.replace("MB", ""));
+        if (value.endsWith("kB")) return Double.parseDouble(value.replace("kB", "")) / 1024;
+        return Double.parseDouble(value.replace("B", "")) / (1024 * 1024);
     }
 
     private String generatePassword() {

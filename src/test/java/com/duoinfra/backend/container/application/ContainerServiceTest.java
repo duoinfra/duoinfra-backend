@@ -6,22 +6,24 @@ import com.duoinfra.backend.container.domain.ContainerRepository;
 import com.duoinfra.backend.user.domain.Role;
 import com.duoinfra.backend.user.domain.User;
 import com.duoinfra.backend.user.domain.UserNotFoundException;
-import com.duoinfra.backend.user.domain.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -35,13 +37,13 @@ class ContainerServiceTest {
     private ContainerRepository containerRepository;
 
     @Mock
-    private UserRepository userRepository;
+    private ContainerPersistenceService containerPersistenceService;
 
     private ContainerService containerService;
 
     @BeforeEach
     void setUp() {
-        containerService = new ContainerService(dockerClient, containerRepository, userRepository, "220.117.221.158");
+        containerService = new ContainerService(dockerClient, containerRepository, containerPersistenceService, "220.117.221.158");
     }
 
     private User userWithId(Long id) {
@@ -62,10 +64,10 @@ class ContainerServiceTest {
     void provision_success() {
         // given
         User owner = userWithId(1L);
-        given(userRepository.findById(1L)).willReturn(Optional.of(owner));
+        given(containerPersistenceService.findOwner(1L)).willReturn(owner);
         DockerProvisionResult provisionResult = new DockerProvisionResult("abc123", 10000, "root", "password1234");
         given(dockerClient.provisionContainer(1, 512)).willReturn(provisionResult);
-        given(containerRepository.save(any(Container.class))).willAnswer(inv -> {
+        given(containerPersistenceService.saveContainer(any(Container.class))).willAnswer(inv -> {
             Container container = inv.getArgument(0);
             ReflectionTestUtils.setField(container, "id", 10L);
             return container;
@@ -85,12 +87,30 @@ class ContainerServiceTest {
     }
 
     @Test
-    @DisplayName("존재하지 않는 사용자로 발급을 시도하면 예외가 발생한다")
+    @DisplayName("컨테이너 발급 시 SSH 프로비저닝 이후에 DB 저장이 일어난다")
+    void provision_callsDockerClientBeforeSavingToDb() {
+        User owner = userWithId(1L);
+        given(containerPersistenceService.findOwner(1L)).willReturn(owner);
+        DockerProvisionResult provisionResult = new DockerProvisionResult("abc123", 10000, "root", "password1234");
+        given(dockerClient.provisionContainer(1, 512)).willReturn(provisionResult);
+        given(containerPersistenceService.saveContainer(any(Container.class))).willAnswer(inv -> inv.getArgument(0));
+
+        containerService.provision(new ContainerProvisionCommand(1, 512), 1L);
+
+        InOrder inOrder = inOrder(dockerClient, containerPersistenceService);
+        inOrder.verify(dockerClient).provisionContainer(1, 512);
+        inOrder.verify(containerPersistenceService).saveContainer(any(Container.class));
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 사용자로 발급을 시도하면 예외가 발생하고 SSH 프로비저닝은 호출되지 않는다")
     void provision_userNotFound_throws() {
-        given(userRepository.findById(1L)).willReturn(Optional.empty());
+        given(containerPersistenceService.findOwner(1L)).willThrow(new UserNotFoundException(1L));
 
         assertThatThrownBy(() -> containerService.provision(new ContainerProvisionCommand(1, 512), 1L))
                 .isInstanceOf(UserNotFoundException.class);
+
+        verify(dockerClient, never()).provisionContainer(anyInt(), anyInt());
     }
 
     @Test
@@ -124,7 +144,7 @@ class ContainerServiceTest {
     void getDetail_ownedByRequester_returnsDetail() {
         User owner = userWithId(1L);
         Container container = containerOwnedBy(100L, owner);
-        given(containerRepository.findById(100L)).willReturn(Optional.of(container));
+        given(containerPersistenceService.getAccessibleContainer(100L, 1L, Role.USER)).willReturn(container);
 
         ContainerResult result = containerService.getDetail(100L, 1L, Role.USER);
 
@@ -132,34 +152,12 @@ class ContainerServiceTest {
     }
 
     @Test
-    @DisplayName("ADMIN은 다른 사용자 소유 컨테이너도 상세 조회할 수 있다")
-    void getDetail_notOwnedButAdmin_returnsDetail() {
-        User owner = userWithId(1L);
-        Container container = containerOwnedBy(100L, owner);
-        given(containerRepository.findById(100L)).willReturn(Optional.of(container));
-
-        ContainerResult result = containerService.getDetail(100L, 99L, Role.ADMIN);
-
-        assertThat(result.id()).isEqualTo(100L);
-    }
-
-    @Test
-    @DisplayName("USER가 다른 사용자 소유 컨테이너를 조회하면 404에 해당하는 예외가 발생한다")
-    void getDetail_notOwnedAndNotAdmin_throwsNotFound() {
-        User owner = userWithId(1L);
-        Container container = containerOwnedBy(100L, owner);
-        given(containerRepository.findById(100L)).willReturn(Optional.of(container));
+    @DisplayName("존재하지 않거나 접근 권한이 없는 컨테이너를 조회하면 예외가 발생한다")
+    void getDetail_notAccessible_throwsNotFound() {
+        given(containerPersistenceService.getAccessibleContainer(100L, 2L, Role.USER))
+                .willThrow(new ContainerNotFoundException(100L));
 
         assertThatThrownBy(() -> containerService.getDetail(100L, 2L, Role.USER))
-                .isInstanceOf(ContainerNotFoundException.class);
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 컨테이너를 조회하면 예외가 발생한다")
-    void getDetail_containerNotExists_throwsNotFound() {
-        given(containerRepository.findById(100L)).willReturn(Optional.empty());
-
-        assertThatThrownBy(() -> containerService.getDetail(100L, 1L, Role.USER))
                 .isInstanceOf(ContainerNotFoundException.class);
     }
 
@@ -168,24 +166,54 @@ class ContainerServiceTest {
     void delete_ownedByRequester_deletesContainer() {
         User owner = userWithId(1L);
         Container container = containerOwnedBy(100L, owner);
-        given(containerRepository.findById(100L)).willReturn(Optional.of(container));
+        given(containerPersistenceService.getAccessibleContainer(100L, 1L, Role.USER)).willReturn(container);
 
         containerService.delete(100L, 1L, Role.USER);
 
         verify(dockerClient).removeContainer("docker-100");
-        verify(containerRepository).delete(container);
+        verify(containerPersistenceService).deleteContainer(container);
     }
 
     @Test
-    @DisplayName("USER가 다른 사용자 소유 컨테이너를 삭제하려 하면 예외가 발생한다")
-    void delete_notOwnedAndNotAdmin_throwsNotFound() {
+    @DisplayName("컨테이너 삭제 시 SSH 삭제 이후에 DB 삭제가 일어난다")
+    void delete_callsDockerClientBeforeDeletingFromDb() {
         User owner = userWithId(1L);
         Container container = containerOwnedBy(100L, owner);
-        given(containerRepository.findById(100L)).willReturn(Optional.of(container));
+        given(containerPersistenceService.getAccessibleContainer(100L, 1L, Role.USER)).willReturn(container);
+
+        containerService.delete(100L, 1L, Role.USER);
+
+        InOrder inOrder = inOrder(dockerClient, containerPersistenceService);
+        inOrder.verify(dockerClient).removeContainer("docker-100");
+        inOrder.verify(containerPersistenceService).deleteContainer(container);
+    }
+
+    @Test
+    @DisplayName("존재하지 않거나 접근 권한이 없는 컨테이너를 삭제하려 하면 예외가 발생하고 SSH 호출은 일어나지 않는다")
+    void delete_notAccessible_throwsNotFound() {
+        given(containerPersistenceService.getAccessibleContainer(100L, 2L, Role.USER))
+                .willThrow(new ContainerNotFoundException(100L));
 
         assertThatThrownBy(() -> containerService.delete(100L, 2L, Role.USER))
                 .isInstanceOf(ContainerNotFoundException.class);
-        verify(containerRepository, never()).delete(any());
+        verify(dockerClient, never()).removeContainer(any());
+        verify(containerPersistenceService, never()).deleteContainer(any());
+    }
+
+    @Test
+    @DisplayName("SSH 삭제는 성공했지만 DB 삭제가 실패하면 예외를 그대로 전파한다")
+    void delete_sshSucceedsButDbDeleteFails_propagatesException() {
+        User owner = userWithId(1L);
+        Container container = containerOwnedBy(100L, owner);
+        given(containerPersistenceService.getAccessibleContainer(100L, 1L, Role.USER)).willReturn(container);
+        RuntimeException dbFailure = new RuntimeException("DB 연결 끊김");
+        doThrow(dbFailure).when(containerPersistenceService).deleteContainer(container);
+
+        assertThatThrownBy(() -> containerService.delete(100L, 1L, Role.USER))
+                .isSameAs(dbFailure);
+
+        // SSH 컨테이너 삭제 자체는 이미 완료된 상태여야 한다.
+        verify(dockerClient).removeContainer("docker-100");
     }
 
     @Test
@@ -193,7 +221,7 @@ class ContainerServiceTest {
     void getMetrics_ownedByRequester_returnsMetrics() {
         User owner = userWithId(1L);
         Container container = containerOwnedBy(100L, owner);
-        given(containerRepository.findById(100L)).willReturn(Optional.of(container));
+        given(containerPersistenceService.getAccessibleContainer(100L, 1L, Role.USER)).willReturn(container);
         ContainerMetrics metrics = new ContainerMetrics(10.0, 20.0, 30.0, 40.0, 50.0);
         given(dockerClient.getContainerMetrics("docker-100")).willReturn(metrics);
 
@@ -203,13 +231,13 @@ class ContainerServiceTest {
     }
 
     @Test
-    @DisplayName("USER가 다른 사용자 소유 컨테이너의 메트릭을 조회하려 하면 예외가 발생한다")
-    void getMetrics_notOwnedAndNotAdmin_throwsNotFound() {
-        User owner = userWithId(1L);
-        Container container = containerOwnedBy(100L, owner);
-        given(containerRepository.findById(100L)).willReturn(Optional.of(container));
+    @DisplayName("존재하지 않거나 접근 권한이 없는 컨테이너의 메트릭을 조회하려 하면 예외가 발생하고 SSH 호출은 일어나지 않는다")
+    void getMetrics_notAccessible_throwsNotFound() {
+        given(containerPersistenceService.getAccessibleContainer(100L, 2L, Role.USER))
+                .willThrow(new ContainerNotFoundException(100L));
 
         assertThatThrownBy(() -> containerService.getMetrics(100L, 2L, Role.USER))
                 .isInstanceOf(ContainerNotFoundException.class);
+        verify(dockerClient, never()).getContainerMetrics(any());
     }
 }

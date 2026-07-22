@@ -1,0 +1,13 @@
+.git
+.gradle
+.idea
+*.iml
+out/
+bin/
+build/reports
+build/test-results
+build/tmp
+src
+!build/libs
+.env
+.env.local

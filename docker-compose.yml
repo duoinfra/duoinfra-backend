@@ -1,0 +1,58 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: duoinfra-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-duoinfra}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: duoinfra-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: duoinfra-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      PHYSICAL_SERVER_HOST: ${PHYSICAL_SERVER_HOST:-220.117.221.158}
+      PHYSICAL_SERVER_PORT: ${PHYSICAL_SERVER_PORT:-22}
+      PHYSICAL_SERVER_USERNAME: ${PHYSICAL_SERVER_USERNAME:-pi}
+      PHYSICAL_SERVER_PASSWORD: ${PHYSICAL_SERVER_PASSWORD}
+      ADMIN_TEMP_EMAILS: ${ADMIN_TEMP_EMAILS:-}
+    ports:
+      - "8080:8080"
+
+volumes:
+  mysql_data:
+  redis_data:

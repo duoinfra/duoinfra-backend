@@ -41,6 +41,11 @@ public class RefreshTokenRedisRepository implements RefreshTokenStore {
         return Optional.ofNullable(value).map(Object::toString);
     }
 
+    @Override
+    public void deleteByUserId(Long userId) {
+        redisTemplate.delete(key(userId));
+    }
+
     private String key(Long userId) {
         return KEY_PREFIX + userId;
     }

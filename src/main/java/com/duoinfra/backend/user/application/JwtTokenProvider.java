@@ -2,6 +2,8 @@ package com.duoinfra.backend.user.application;
 
 import com.duoinfra.backend.user.domain.Role;
 
+import java.util.Date;
+
 public interface JwtTokenProvider {
     String generateAccessToken(Long userId, String email, Role role);
 
@@ -12,4 +14,7 @@ public interface JwtTokenProvider {
     boolean validateToken(String token);
     Long getUserId(String token);
     Role getRole(String token);
+
+    // 로그아웃 시 블랙리스트 TTL을 토큰의 남은 만료 시간과 맞추기 위해 필요하다.
+    Date getExpiration(String token);
 }

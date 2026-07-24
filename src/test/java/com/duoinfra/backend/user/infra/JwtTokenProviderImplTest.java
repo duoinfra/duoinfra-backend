@@ -5,6 +5,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Date;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JwtTokenProviderImplTest {
@@ -57,5 +59,18 @@ class JwtTokenProviderImplTest {
 
         assertThat(jwtTokenProvider.validateToken(refreshToken)).isTrue();
         assertThat(jwtTokenProvider.getUserId(refreshToken)).isEqualTo(7L);
+    }
+
+    @Test
+    @DisplayName("발급한 Access Token의 만료 시각은 발급 시점 + accessTokenExpiration이다")
+    void getExpiration_returnsIssuedAtPlusExpirationDuration() {
+        long beforeIssue = System.currentTimeMillis();
+        String token = jwtTokenProvider.generateAccessToken(1L, "user@example.com", Role.USER);
+
+        Date expiration = jwtTokenProvider.getExpiration(token);
+
+        // 발급 시점(beforeIssue) 기준 accessTokenExpiration(3600000ms) 뒤 근처인지 확인한다.
+        long expectedExpirationMillis = beforeIssue + 3600000L;
+        assertThat(expiration.getTime()).isBetween(expectedExpirationMillis - 5000L, expectedExpirationMillis + 5000L);
     }
 }

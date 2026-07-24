@@ -76,6 +76,11 @@ public class JwtTokenProviderImpl implements JwtTokenProvider {
         return Role.valueOf(parseClaims(token).get("role", String.class));
     }
 
+    @Override
+    public Date getExpiration(String token) {
+        return parseClaims(token).getExpiration();
+    }
+
     private Claims parseClaims(String token) {
         return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
     }

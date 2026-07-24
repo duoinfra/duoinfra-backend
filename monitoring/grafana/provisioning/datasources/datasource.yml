@@ -1,0 +1,12 @@
+# Grafana 컨테이너가 기동될 때 이 파일을 읽어 Prometheus 데이터 소스를 자동으로 등록한다.
+# (수동으로 "Add data source"를 클릭할 필요 없이 최초 실행부터 바로 대시보드 구성 가능)
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    # docker-compose 내부 네트워크 DNS: 서비스명 prometheus, 기본 포트 9090
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

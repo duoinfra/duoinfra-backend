@@ -47,3 +47,11 @@ springdoc:
     path: /swagger-ui.html
     operations-sorter: method
     tags-sorter: alpha
+
+# Prometheus가 스크랩할 /actuator/prometheus만 최소로 연다.
+# health, info 등 나머지 actuator 엔드포인트는 include에 넣지 않는 한 자동 비활성화된다.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus

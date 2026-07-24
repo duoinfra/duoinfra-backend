@@ -1,0 +1,12 @@
+# Prometheus 스크랩 설정.
+# docker-compose 내부 네트워크에서는 서비스명(app)이 곧 호스트명이므로
+# 컨테이너 IP나 localhost가 아닌 "app:8080"으로 접근한다.
+global:
+  scrape_interval: 15s     # 얼마나 자주 대상을 스크랩할지
+  evaluation_interval: 15s # 알람/룰 평가 주기 (현재 룰은 없지만 기본값 유지)
+
+scrape_configs:
+  - job_name: 'duoinfra-backend'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['app:8080']

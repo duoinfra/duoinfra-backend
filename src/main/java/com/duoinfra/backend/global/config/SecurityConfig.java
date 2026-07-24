@@ -19,7 +19,6 @@ public class SecurityConfig {
 
     private static final String[] PERMIT_ALL_PATHS = {
             "/api/auth/**",
-            "/api/items/**",
             "/swagger-ui.html",
             "/swagger-ui/**",
             "/v3/api-docs/**",

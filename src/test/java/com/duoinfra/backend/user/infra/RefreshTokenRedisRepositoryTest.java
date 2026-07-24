@@ -79,4 +79,14 @@ class RefreshTokenRedisRepositoryTest {
         // then
         assertThat(result).isEmpty();
     }
+
+    @Test
+    @DisplayName("userId로 저장된 Refresh Token을 삭제한다")
+    void deleteByUserId_deletesStoredToken() {
+        // when
+        refreshTokenRedisRepository.deleteByUserId(1L);
+
+        // then
+        then(redisTemplate).should().delete("refresh-token:1");
+    }
 }

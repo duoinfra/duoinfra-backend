@@ -2,6 +2,7 @@ package com.duoinfra.backend.global.config;
 
 import com.duoinfra.backend.global.security.JwtAuthenticationFilter;
 import com.duoinfra.backend.user.application.JwtTokenProvider;
+import com.duoinfra.backend.user.application.TokenBlacklistStore;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,9 +27,11 @@ public class SecurityConfig {
     };
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final TokenBlacklistStore tokenBlacklistStore;
 
-    public SecurityConfig(JwtTokenProvider jwtTokenProvider) {
+    public SecurityConfig(JwtTokenProvider jwtTokenProvider, TokenBlacklistStore tokenBlacklistStore) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.tokenBlacklistStore = tokenBlacklistStore;
     }
 
     @Bean
@@ -49,7 +52,7 @@ public class SecurityConfig {
                             response.getWriter().write("인증이 필요합니다.");
                         })
                 )
-                .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider, tokenBlacklistStore), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

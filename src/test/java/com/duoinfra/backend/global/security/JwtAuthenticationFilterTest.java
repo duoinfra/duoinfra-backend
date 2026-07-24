@@ -1,6 +1,7 @@
 package com.duoinfra.backend.global.security;
 
 import com.duoinfra.backend.user.application.JwtTokenProvider;
+import com.duoinfra.backend.user.application.TokenBlacklistStore;
 import com.duoinfra.backend.user.domain.Role;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,11 +25,14 @@ class JwtAuthenticationFilterTest {
     @Mock
     private JwtTokenProvider jwtTokenProvider;
 
+    @Mock
+    private TokenBlacklistStore tokenBlacklistStore;
+
     private JwtAuthenticationFilter filter;
 
     @BeforeEach
     void setUp() {
-        filter = new JwtAuthenticationFilter(jwtTokenProvider);
+        filter = new JwtAuthenticationFilter(jwtTokenProvider, tokenBlacklistStore);
     }
 
     @AfterEach
@@ -73,6 +77,21 @@ class JwtAuthenticationFilterTest {
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer invalid-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    @DisplayName("서명/만료는 유효하지만 로그아웃으로 블랙리스트에 등록된 토큰이면 인증 정보를 설정하지 않는다")
+    void blacklistedToken_doesNotSetAuthentication() throws Exception {
+        given(jwtTokenProvider.validateToken("logged-out-token")).willReturn(true);
+        given(tokenBlacklistStore.isBlacklisted("logged-out-token")).willReturn(true);
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer logged-out-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, new MockFilterChain());

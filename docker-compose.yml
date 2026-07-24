@@ -53,6 +53,36 @@ services:
     ports:
       - "8080:8080"
 
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: duoinfra-prometheus
+    restart: unless-stopped
+    depends_on:
+      - app
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    # 호스트에 포트를 노출하지 않는다: Prometheus는 Grafana만 조회하면 되는 내부 컴포넌트라
+    # 외부에서 직접 접근할 필요가 없고, 열어두면 그 자체로 불필요한 공격 표면이 된다.
+    # Grafana는 같은 docker-compose 네트워크 안에서 "http://prometheus:9090"으로 접근한다.
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: duoinfra-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      # 대시보드를 직접 봐야 하므로 Grafana만 호스트에 노출한다.
+      - "3000:3000"
+
 volumes:
   mysql_data:
   redis_data:
+  prometheus_data:
+  grafana_data:

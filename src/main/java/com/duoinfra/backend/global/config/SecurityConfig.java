@@ -24,6 +24,9 @@ public class SecurityConfig {
             "/swagger-ui/**",
             "/v3/api-docs/**",
             "/v3/api-docs.yaml",
+            // Prometheus가 인증 없이 스크랩할 수 있어야 하는 단일 엔드포인트.
+            // /actuator/** 전체를 열지 않고 이 경로만 명시적으로 허용한다.
+            "/actuator/prometheus",
     };
 
     private final JwtTokenProvider jwtTokenProvider;

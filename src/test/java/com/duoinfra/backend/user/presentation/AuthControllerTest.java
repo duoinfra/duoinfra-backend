@@ -2,8 +2,11 @@ package com.duoinfra.backend.user.presentation;
 
 import com.duoinfra.backend.user.application.DuplicateEmailException;
 import com.duoinfra.backend.user.application.InvalidCredentialsException;
+import com.duoinfra.backend.user.application.InvalidRefreshTokenException;
 import com.duoinfra.backend.user.application.LoginResult;
 import com.duoinfra.backend.user.application.LoginService;
+import com.duoinfra.backend.user.application.RefreshResult;
+import com.duoinfra.backend.user.application.RefreshTokenService;
 import com.duoinfra.backend.user.application.SignupResult;
 import com.duoinfra.backend.user.application.SignupService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +40,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private LoginService loginService;
+
+    @MockitoBean
+    private RefreshTokenService refreshTokenService;
 
     @Test
     @DisplayName("POST /api/auth/signup - 회원가입 성공")
@@ -81,7 +87,7 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /api/auth/login - 로그인 성공")
     void login_success() throws Exception {
-        given(loginService.login(any())).willReturn(new LoginResult("access-token", "Bearer", "user@example.com", "duo"));
+        given(loginService.login(any())).willReturn(new LoginResult("access-token", "refresh-token", "Bearer", "user@example.com", "duo"));
 
         String request = objectMapper.writeValueAsString(new LoginRequest("user@example.com", "password1234"));
 
@@ -90,6 +96,7 @@ class AuthControllerTest {
                         .content(request))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value("access-token"))
+                .andExpect(jsonPath("$.refreshToken").value("refresh-token"))
                 .andExpect(jsonPath("$.tokenType").value("Bearer"));
     }
 
@@ -101,6 +108,34 @@ class AuthControllerTest {
         String request = objectMapper.writeValueAsString(new LoginRequest("user@example.com", "wrongPassword"));
 
         mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/refresh - Refresh Token이 유효하면 새 Access Token을 발급한다")
+    void refresh_success() throws Exception {
+        given(refreshTokenService.refresh(any())).willReturn(new RefreshResult("new-access-token", "Bearer"));
+
+        String request = objectMapper.writeValueAsString(new RefreshRequest("refresh-token"));
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("new-access-token"))
+                .andExpect(jsonPath("$.tokenType").value("Bearer"));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/refresh - Refresh Token이 유효하지 않으면 401 반환")
+    void refresh_invalidToken() throws Exception {
+        given(refreshTokenService.refresh(any())).willThrow(new InvalidRefreshTokenException());
+
+        String request = objectMapper.writeValueAsString(new RefreshRequest("invalid-refresh-token"));
+
+        mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
                 .andExpect(status().isUnauthorized());

@@ -18,11 +18,14 @@ public class JwtTokenProviderImpl implements JwtTokenProvider {
 
     private final SecretKey key;
     private final long accessTokenExpirationMillis;
+    private final long refreshTokenExpirationMillis;
 
     public JwtTokenProviderImpl(@Value("${jwt.secret}") String secret,
-                                 @Value("${jwt.access-token-expiration}") long accessTokenExpirationMillis) {
+                                 @Value("${jwt.access-token-expiration}") long accessTokenExpirationMillis,
+                                 @Value("${jwt.refresh-token-expiration}") long refreshTokenExpirationMillis) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessTokenExpirationMillis = accessTokenExpirationMillis;
+        this.refreshTokenExpirationMillis = refreshTokenExpirationMillis;
     }
 
     @Override
@@ -34,6 +37,19 @@ public class JwtTokenProviderImpl implements JwtTokenProvider {
                 .subject(String.valueOf(userId))
                 .claim("email", email)
                 .claim("role", role.name())
+                .issuedAt(now)
+                .expiration(expiration)
+                .signWith(key)
+                .compact();
+    }
+
+    @Override
+    public String generateRefreshToken(Long userId) {
+        Date now = new Date();
+        Date expiration = new Date(now.getTime() + refreshTokenExpirationMillis);
+
+        return Jwts.builder()
+                .subject(String.valueOf(userId))
                 .issuedAt(now)
                 .expiration(expiration)
                 .signWith(key)

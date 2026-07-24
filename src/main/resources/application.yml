@@ -31,6 +31,9 @@ physical-server:
 jwt:
   secret: ${JWT_SECRET:local-development-only-jwt-secret-do-not-use-in-production}
   access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:3600000}
+  # Refresh Token은 Access Token보다 훨씬 길게 (기본 14일) 가져가서, 사용자가 Access Token
+  # 만료 주기(1시간)마다 재로그인하지 않고도 /api/auth/refresh로 Access Token만 다시 받을 수 있게 한다.
+  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:1209600000}
 
 # TODO(임시 조치): 정식 관리자 승격 API가 생기면 이 프로퍼티와 SignupService의 관련 로직을 제거할 것.
 # 콤마로 구분된 이메일 목록으로, 여기 등록된 이메일로 회원가입하면 자동으로 ADMIN 권한이 부여된다.

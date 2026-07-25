@@ -5,6 +5,9 @@
 # grafana.com에서 그대로 받아 이 폴더에 두는 방식을 쓴다:
 #   - jvm-micrometer.json      : "JVM (Micrometer)" 공식 템플릿 (Dashboard ID 4701)
 #   - node-exporter-full.json  : "Node Exporter Full" 표준 템플릿 (Dashboard ID 1860)
+#   - logs-dashboard.json      : 로그(Loki) 전용 대시보드. 위 두 개는 메트릭용이라 성격이 달라
+#                                일부러 별도 파일/대시보드로 분리했다 (자세한 이유는 파일 내 text 패널 참고).
+#                                이 파일만 커뮤니티 템플릿이 아니라 직접 작성한 것이다.
 apiVersion: 1
 
 providers:

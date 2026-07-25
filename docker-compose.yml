@@ -107,12 +107,45 @@ services:
     # 외부에서 직접 접근할 필요가 없고, 열어두면 그 자체로 불필요한 공격 표면이 된다.
     # Grafana는 같은 docker-compose 네트워크 안에서 "http://prometheus:9090"으로 접근한다.
 
+  # loki: 로그 저장/조회 전용 컴포넌트. Promtail이 여기로 로그를 push하고, Grafana가 여기서 조회한다.
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: duoinfra-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    # Prometheus와 동일한 원칙: Loki도 Grafana/Promtail만 접근하면 되는 내부 컴포넌트이므로
+    # 호스트에 포트를 노출하지 않는다. 같은 docker-compose 네트워크 안에서
+    # Promtail은 http://loki:3100/loki/api/v1/push 로, Grafana는 http://loki:3100 으로 접근한다.
+
+  # promtail: 이 호스트의 Docker 컨테이너 로그를 수집해 Loki로 전달하는 에이전트.
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: duoinfra-promtail
+    restart: unless-stopped
+    depends_on:
+      - loki
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      # 어떤 컨테이너가 떠 있는지 조회하기 위해 Docker 데몬 소켓을 읽기 전용으로 마운트한다.
+      # (쓰기 권한이 필요 없으므로 ro로 제한 — 컨테이너 제어 권한까지 줄 필요는 없다)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 실제 컨테이너 로그 파일(JSON 드라이버 포맷)이 저장되는 호스트 경로. 마찬가지로 ro.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail_positions:/var/promtail
+    # Promtail도 포트를 노출하지 않는다: Loki로 로그를 밀어넣기(push)만 하는 순수 수집기라
+    # 외부/Grafana가 Promtail에 직접 접근할 일이 없다.
+
   grafana:
     image: grafana/grafana:11.3.0
     container_name: duoinfra-grafana
     restart: unless-stopped
     depends_on:
       - prometheus
+      - loki
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
     volumes:
@@ -127,3 +160,5 @@ volumes:
   redis_data:
   prometheus_data:
   grafana_data:
+  loki_data:
+  promtail_positions:

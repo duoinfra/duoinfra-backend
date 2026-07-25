@@ -1,0 +1,95 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "type": "text",
+      "title": "이 대시보드에 대하여",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "mode": "markdown",
+        "content": "### 왜 메트릭 대시보드와 분리했는가\n- **질의 대상과 최적화 방향이 다르다**: Prometheus(메트릭)는 숫자 시계열에, Loki(로그)는 텍스트 스트림에 최적화되어 있다. 하나의 대시보드에 억지로 섞으면 두 데이터소스 중 어느 쪽에도 맞지 않는 새로고침 주기·타임레인지·쿼리 언어(PromQL vs LogQL) 타협이 생긴다.\n- **보는 목적과 흐름이 다르다**: 메트릭 대시보드(JVM/Node Exporter)는 \"지표가 이상해졌는가\"를 넓게 훑어보는 용도이고, 이 대시보드는 알람/이상 징후를 본 뒤 \"왜 이상해졌는가\"를 로그로 원인 추적하는 용도다. 서로 다른 시점에 서로 다른 목적으로 열어보는 화면이다.\n- **필요한 갱신 빈도가 다르다**: 로그는 수 초 단위 실시간 tail이 유용하지만, 같은 주기로 메트릭 패널까지 새로고침하면 불필요한 Prometheus 쿼리 부하만 늘어난다. 이 대시보드만 별도로 `refresh: 10s` + `liveNow`를 켰다.\n\n### 패널 구성\n1. **app 컨테이너 최근 로그** — `duoinfra-app` 컨테이너의 stdout/stderr 전체 스트림을 실시간 tail\n2. **app 컨테이너 ERROR / WARN 로그** — 같은 스트림에서 레벨만 필터링"
+      }
+    },
+    {
+      "type": "logs",
+      "title": "app 컨테이너 최근 로그 (실시간)",
+      "description": "duoinfra-app 컨테이너의 stdout/stderr 로그 전체 스트림. Promtail이 Docker json-file 로그 포맷을 파싱(docker pipeline stage)해 Loki로 전송한 것을 그대로 tail한다.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 4 },
+      "id": 2,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{container=\"duoinfra-app\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "type": "logs",
+      "title": "app 컨테이너 ERROR / WARN 로그",
+      "description": "위 패널과 같은 스트림에서 (?i)(error|warn) 정규식으로 레벨만 걸러 본다. Spring Boot 기본 로그 패턴(%-5level)에 ERROR/WARN 문자열이 그대로 찍히는 것을 이용한 텍스트 필터다. 추후 JSON 구조화 로깅을 도입하면 level 라벨/필드 기반 필터로 대체하는 편이 더 정확하다.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "id": 3,
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{container=\"duoinfra-app\"} |~ `(?i)(error|warn)`",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["logs", "loki"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Logs (Loki)",
+  "uid": "duoinfra-logs",
+  "version": 1
+}

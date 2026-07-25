@@ -1,0 +1,37 @@
+# Promtail: 이 호스트에 떠 있는 Docker 컨테이너들의 로그를 자동으로 찾아 Loki로 전송한다.
+#
+# 파일 경로를 직접 나열하는 정적(static) 설정 대신 docker_sd_configs를 쓰는 이유:
+# 컨테이너가 재배포/재시작될 때마다 로그 파일 경로(컨테이너 ID 기반)가 바뀌는데,
+# docker.sock을 통해 Docker 데몬에 "지금 떠 있는 컨테이너 목록"을 주기적으로 물어보면
+# 새로 뜨거나 사라지는 컨테이너를 설정 변경 없이 자동으로 따라간다.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+# 컨테이너가 재시작되어도 "어디까지 읽었는지"를 잃어버리지 않도록
+# 볼륨(promtail_positions)에 위치 파일을 저장한다. (안 그러면 재시작마다 로그가 중복 수집됨)
+positions:
+  filename: /var/promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # __meta_docker_container_name은 "/duoinfra-app"처럼 앞에 슬래시가 붙어 있어 잘라낸다.
+      - source_labels: ['__meta_docker_container_name']
+        regex: '^/(.*)$'
+        target_label: 'container'
+      # docker-compose가 컨테이너에 자동으로 붙이는 라벨. 어떤 compose 서비스인지 구분하는 용도.
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'compose_service'
+    pipeline_stages:
+      # Docker의 json-file 로그 드라이버는 한 줄마다 {"log":"...","stream":"stdout","time":"..."}
+      # 형태로 감싸서 저장한다. docker 스테이지가 이 포맷을 자동으로 벗겨내
+      # 실제 로그 메시지, stream(stdout/stderr), 타임스탬프를 추출해준다.
+      - docker: {}

@@ -1,0 +1,43 @@
+# Loki 단일 프로세스(single-binary) 설정.
+# 지금 규모(서버 1대, 컨테이너 수 개)에서는 마이크로서비스 모드로 나눌 이유가 없어
+# 인덱스/청크 저장을 전부 로컬 파일시스템에 두는 가장 단순한 구성으로 시작한다.
+
+auth_enabled: false  # 멀티테넌시 불필요. 대신 아래 docker-compose 원칙(포트 미노출)으로 접근을 제한한다.
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory   # 단일 인스턴스라 etcd/consul 같은 외부 ring 저장소가 필요 없다.
+
+# schema v13 + tsdb: boltdb-shipper는 구버전 방식이라 최신 Loki 권장 조합인 tsdb를 사용한다.
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+limits_config:
+  # 로그를 무제한 보관하면 디스크가 언젠가 가득 찬다(오늘 겪은 디스크 부족 사고와 같은 종류의 문제).
+  # 일단 7일 보관으로 시작하고, 필요해지면 늘린다.
+  retention_period: 168h
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h

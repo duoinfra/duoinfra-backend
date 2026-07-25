@@ -10,3 +10,15 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: false
+
+  # 로그 조회 전용 데이터소스. 메트릭(Prometheus)은 그대로 기본값으로 유지하고,
+  # Loki는 로그 대시보드에서만 명시적으로 선택해 쓰도록 isDefault를 주지 않는다.
+  - name: Loki
+    type: loki
+    access: proxy
+    uid: loki   # 대시보드 JSON에서 datasource.uid로 고정 참조하기 위해 명시적으로 지정
+    url: http://loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000

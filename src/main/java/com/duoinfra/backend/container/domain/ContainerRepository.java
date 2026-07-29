@@ -9,5 +9,6 @@ public interface ContainerRepository {
     Optional<Container> findById(Long id);
     List<Container> findAll();
     List<Container> findAllByOwnerId(Long ownerId);
-    void delete(Container container);
+    List<Container> findAllExcludingStatus(ContainerStatus excludedStatus);
+    List<Container> findAllByOwnerIdExcludingStatus(Long ownerId, ContainerStatus excludedStatus);
 }

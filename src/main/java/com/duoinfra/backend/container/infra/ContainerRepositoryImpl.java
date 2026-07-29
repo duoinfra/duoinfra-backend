@@ -2,6 +2,7 @@ package com.duoinfra.backend.container.infra;
 
 import com.duoinfra.backend.container.domain.Container;
 import com.duoinfra.backend.container.domain.ContainerRepository;
+import com.duoinfra.backend.container.domain.ContainerStatus;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -42,7 +43,12 @@ public class ContainerRepositoryImpl implements ContainerRepository {
     }
 
     @Override
-    public void delete(Container container) {
-        jpaRepository.delete(container);
+    public List<Container> findAllExcludingStatus(ContainerStatus excludedStatus) {
+        return jpaRepository.findAllByStatusNot(excludedStatus);
+    }
+
+    @Override
+    public List<Container> findAllByOwnerIdExcludingStatus(Long ownerId, ContainerStatus excludedStatus) {
+        return jpaRepository.findAllByOwner_IdAndStatusNot(ownerId, excludedStatus);
     }
 }

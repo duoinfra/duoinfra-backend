@@ -48,10 +48,8 @@ public class SshDockerClient implements DockerClient {
         int sshPort = portAllocator.allocate();
         String containerPassword = generatePassword();
 
-        Session session = null;
+        Session session = createSession();
         try {
-            session = createSession();
-
             String containerId = execCommand(session,
                     String.format(
                             "docker run -d --cpus=%d -m %dm " +
@@ -74,19 +72,27 @@ public class SshDockerClient implements DockerClient {
         } catch (Exception e) {
             throw new ContainerProvisionException("컨테이너 발급 실패: " + e.getMessage(), e);
         } finally {
-            if (session != null && session.isConnected()) {
+            if (session.isConnected()) {
                 session.disconnect();
             }
         }
     }
 
-    private Session createSession() throws Exception {
-        JSch jsch = new JSch();
-        Session session = jsch.getSession(username, host, port);
-        session.setPassword(password);
-        session.setConfig("StrictHostKeyChecking", "no");
-        session.connect(SSH_CONNECT_TIMEOUT_MS);
-        return session;
+    /**
+     * SSH 세션 연결 실패는 Docker 명령 실행 실패와 원인이 다르므로(실물 자원이 만들어지지 않음이 확실함)
+     * {@link SshConnectionException}으로 별도 분류해, 상위 계층이 재시도 가능 여부를 판단할 수 있게 한다.
+     */
+    private Session createSession() {
+        try {
+            JSch jsch = new JSch();
+            Session session = jsch.getSession(username, host, port);
+            session.setPassword(password);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect(SSH_CONNECT_TIMEOUT_MS);
+            return session;
+        } catch (Exception e) {
+            throw new SshConnectionException("SSH 연결 실패: " + e.getMessage(), e);
+        }
     }
 
     private String execCommand(Session session, String command) throws Exception {
@@ -104,22 +110,20 @@ public class SshDockerClient implements DockerClient {
 
     @Override
     public void removeContainer(String containerId) {
-        Session session = null;
+        Session session = createSession();
         try {
-            session = createSession();
             execCommand(session, "docker rm -f " + containerId);
         } catch (Exception e) {
             throw new ContainerProvisionException("컨테이너 삭제 실패: " + e.getMessage(), e);
         } finally {
-            if (session != null && session.isConnected()) session.disconnect();
+            if (session.isConnected()) session.disconnect();
         }
     }
 
     @Override
     public ContainerMetrics getContainerMetrics(String containerId) {
-        Session session = null;
+        Session session = createSession();
         try {
-            session = createSession();
             String output = execCommand(session,
                     "docker stats " + containerId + " --no-stream --format \"{{json .}}\"").trim();
 
@@ -134,7 +138,7 @@ public class SshDockerClient implements DockerClient {
         } catch (Exception e) {
             throw new ContainerProvisionException("메트릭 조회 실패: " + e.getMessage(), e);
         } finally {
-            if (session != null && session.isConnected()) session.disconnect();
+            if (session.isConnected()) session.disconnect();
         }
     }
 

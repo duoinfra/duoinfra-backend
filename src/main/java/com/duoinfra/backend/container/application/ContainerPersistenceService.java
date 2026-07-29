@@ -1,6 +1,7 @@
 package com.duoinfra.backend.container.application;
 
 import com.duoinfra.backend.container.domain.Container;
+import com.duoinfra.backend.container.domain.ContainerFailureReason;
 import com.duoinfra.backend.container.domain.ContainerNotFoundException;
 import com.duoinfra.backend.container.domain.ContainerRepository;
 import com.duoinfra.backend.user.domain.Role;
@@ -52,7 +53,56 @@ public class ContainerPersistenceService {
     }
 
     @Transactional
-    public void deleteContainer(Container container) {
-        containerRepository.delete(container);
+    public Container activateContainer(Long id, String host, DockerProvisionResult result) {
+        Container container = getById(id);
+        container.activate(result.containerId(), host, result.sshPort(), result.sshUsername(), result.sshPassword());
+        return container;
+    }
+
+    @Transactional
+    public Container markCreateFailed(Long id, ContainerFailureReason reason) {
+        Container container = getById(id);
+        container.markCreateFailed(reason);
+        return container;
+    }
+
+    @Transactional
+    public Container markCreateFailedOrphaned(Long id, String dockerContainerId) {
+        Container container = getById(id);
+        container.markCreateFailedOrphaned(dockerContainerId);
+        return container;
+    }
+
+    @Transactional
+    public Container beginDeleting(Long id) {
+        Container container = getById(id);
+        container.beginDeleting();
+        return container;
+    }
+
+    @Transactional
+    public Container markDeleted(Long id) {
+        Container container = getById(id);
+        container.markDeleted();
+        return container;
+    }
+
+    @Transactional
+    public Container markDeleteFailed(Long id, ContainerFailureReason reason) {
+        Container container = getById(id);
+        container.markDeleteFailed(reason);
+        return container;
+    }
+
+    @Transactional
+    public Container markDeleteFailedOrphaned(Long id) {
+        Container container = getById(id);
+        container.markDeleteFailedOrphaned();
+        return container;
+    }
+
+    private Container getById(Long id) {
+        return containerRepository.findById(id)
+                .orElseThrow(() -> new ContainerNotFoundException(id));
     }
 }

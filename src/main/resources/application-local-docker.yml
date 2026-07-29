@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3307/duoinfra?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# LocalDockerClient uses the developer machine's Docker daemon.
+# These values are retained for shared configuration compatibility; no SSH call is made.
+physical-server:
+  host: localhost
+  port: 22
+  username: local
+  password: local

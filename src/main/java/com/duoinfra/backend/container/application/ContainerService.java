@@ -1,7 +1,10 @@
 package com.duoinfra.backend.container.application;
 
 import com.duoinfra.backend.container.domain.Container;
+import com.duoinfra.backend.container.domain.ContainerFailureReason;
 import com.duoinfra.backend.container.domain.ContainerRepository;
+import com.duoinfra.backend.container.domain.ContainerStatus;
+import com.duoinfra.backend.container.infra.SshConnectionException;
 import com.duoinfra.backend.user.domain.Role;
 import com.duoinfra.backend.user.domain.User;
 import org.slf4j.Logger;
@@ -35,28 +38,49 @@ public class ContainerService {
     public ContainerResult provision(ContainerProvisionCommand command, Long requesterId) {
         User owner = containerPersistenceService.findOwner(requesterId);
 
-        DockerProvisionResult provisioned = dockerClient.provisionContainer(command.cpu(), command.memory());
+        // Docker 작업 전에 CREATING 상태의 row를 먼저 INSERT해 둔다.
+        // 이렇게 하면 이후 어느 단계에서 실패하더라도 갱신할 row가 이미 존재하므로
+        // 실패 상태(CREATE_FAILED)와 그 원인을 반드시 남길 수 있다.
+        Container pending = containerPersistenceService.saveContainer(
+                Container.createPending(command.cpu(), command.memory(), owner));
+        Long id = pending.getId();
 
-        Container container = new Container(
-                provisioned.containerId(),
-                physicalServerHost,
-                provisioned.sshPort(),
-                provisioned.sshUsername(),
-                provisioned.sshPassword(),
-                command.cpu(),
-                command.memory(),
-                owner
-        );
-        Container saved = containerPersistenceService.saveContainer(container);
+        DockerProvisionResult provisioned;
+        try {
+            provisioned = dockerClient.provisionContainer(command.cpu(), command.memory());
+        } catch (SshConnectionException e) {
+            containerPersistenceService.markCreateFailed(id, ContainerFailureReason.SSH_CONNECTION_FAILED);
+            log.warn("서버 생성 실패(SSH 연결 실패). id={}", id, e);
+            throw new ContainerProvisionFailedException(id, ContainerFailureReason.SSH_CONNECTION_FAILED, e);
+        } catch (RuntimeException e) {
+            containerPersistenceService.markCreateFailed(id, ContainerFailureReason.DOCKER_COMMAND_FAILED);
+            log.warn("서버 생성 실패(Docker 명령 실패). id={}", id, e);
+            throw new ContainerProvisionFailedException(id, ContainerFailureReason.DOCKER_COMMAND_FAILED, e);
+        }
 
-        return ContainerResult.from(saved);
+        try {
+            Container activated = containerPersistenceService.activateContainer(id, physicalServerHost, provisioned);
+            return ContainerResult.from(activated);
+        } catch (RuntimeException e) {
+            // Docker 컨테이너는 이미 생성되었는데 그 결과를 DB에 반영하지 못했다.
+            // 실물 자원과 DB 상태가 어긋난 고아 컨테이너일 수 있으므로, 어떤 컨테이너가 생성되었는지는 반드시 남긴다.
+            log.error("CRITICAL: Docker 컨테이너({})는 생성되었지만 DB 반영에 실패했습니다. 고아 컨테이너 가능성이 있습니다. id={}",
+                    provisioned.containerId(), id, e);
+            try {
+                containerPersistenceService.markCreateFailedOrphaned(id, provisioned.containerId());
+            } catch (RuntimeException fallbackFailure) {
+                log.error("CRITICAL: 고아 컨테이너 표시조차 실패했습니다. 수동 확인이 필요합니다. id={}, dockerContainerId={}",
+                        id, provisioned.containerId(), fallbackFailure);
+            }
+            throw new ContainerProvisionFailedException(id, ContainerFailureReason.DB_UPDATE_FAILED, e);
+        }
     }
 
     @Transactional(readOnly = true)
     public List<ContainerSummary> list(Long requesterId, Role requesterRole) {
         List<Container> containers = requesterRole == Role.ADMIN
-                ? containerRepository.findAll()
-                : containerRepository.findAllByOwnerId(requesterId);
+                ? containerRepository.findAllExcludingStatus(ContainerStatus.DELETED)
+                : containerRepository.findAllByOwnerIdExcludingStatus(requesterId, ContainerStatus.DELETED);
 
         return containers.stream().map(ContainerSummary::from).toList();
     }
@@ -68,23 +92,47 @@ public class ContainerService {
 
     public ContainerMetrics getMetrics(Long id, Long requesterId, Role requesterRole) {
         Container container = containerPersistenceService.getAccessibleContainer(id, requesterId, requesterRole);
+        container.assertRunning();
         return dockerClient.getContainerMetrics(container.getContainerId());
     }
 
     public void delete(Long id, Long requesterId, Role requesterRole) {
         Container container = containerPersistenceService.getAccessibleContainer(id, requesterId, requesterRole);
 
-        dockerClient.removeContainer(container.getContainerId());
+        // 직전 삭제 시도가 "Docker 삭제는 성공했지만 DB 반영에 실패"했던 경우라면, 실물 자원은 이미 없으므로
+        // Docker 삭제를 다시 시도하지 않고 DB 상태만 바로잡는다. 그 외의 경우 재시도는 Docker 삭제부터 다시 수행한다.
+        boolean dockerAlreadyRemoved = container.getStatus() == ContainerStatus.DELETE_FAILED
+                && container.getFailureReason() == ContainerFailureReason.DB_UPDATE_FAILED;
+
+        Container deleting = containerPersistenceService.beginDeleting(id);
+        String dockerContainerId = deleting.getContainerId();
+
+        if (dockerContainerId != null && !dockerAlreadyRemoved) {
+            try {
+                dockerClient.removeContainer(dockerContainerId);
+            } catch (SshConnectionException e) {
+                containerPersistenceService.markDeleteFailed(id, ContainerFailureReason.SSH_CONNECTION_FAILED);
+                log.warn("서버 삭제 실패(SSH 연결 실패). id={}", id, e);
+                throw new ContainerDeleteFailedException(id, ContainerFailureReason.SSH_CONNECTION_FAILED, e);
+            } catch (RuntimeException e) {
+                containerPersistenceService.markDeleteFailed(id, ContainerFailureReason.DOCKER_COMMAND_FAILED);
+                log.warn("서버 삭제 실패(Docker 명령 실패). id={}", id, e);
+                throw new ContainerDeleteFailedException(id, ContainerFailureReason.DOCKER_COMMAND_FAILED, e);
+            }
+        }
 
         try {
-            containerPersistenceService.deleteContainer(container);
+            containerPersistenceService.markDeleted(id);
         } catch (RuntimeException e) {
-            // SSH로 컨테이너 삭제는 이미 성공했으나 DB 레코드 삭제가 실패한 상태.
-            // 재시도해도 SSH 쪽은 이미 컨테이너가 없어 자연스럽게 넘어가지만, DB에는 고아 레코드가 남으므로
-            // 운영자가 수동으로 확인/정리할 수 있도록 컨테이너 식별 정보를 남기고 예외를 그대로 전파한다.
-            log.error("컨테이너 SSH 삭제는 성공했지만 DB 레코드 삭제에 실패했습니다. id={}, containerId={}",
-                    id, container.getContainerId(), e);
-            throw e;
+            // Docker 컨테이너는 이미 삭제되었는데(혹은 애초에 존재하지 않았는데) 그 사실을 DB에 반영하지 못했다.
+            log.error("CRITICAL: 컨테이너({})는 물리적으로 삭제되었지만 DB 상태 반영에 실패했습니다. id={}",
+                    dockerContainerId, id, e);
+            try {
+                containerPersistenceService.markDeleteFailedOrphaned(id);
+            } catch (RuntimeException fallbackFailure) {
+                log.error("CRITICAL: 삭제 실패 표시조차 실패했습니다. 수동 확인이 필요합니다. id={}", id, fallbackFailure);
+            }
+            throw new ContainerDeleteFailedException(id, ContainerFailureReason.DB_UPDATE_FAILED, e);
         }
     }
 }

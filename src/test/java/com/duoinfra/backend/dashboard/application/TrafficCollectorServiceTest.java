@@ -41,7 +41,8 @@ class TrafficCollectorServiceTest {
     private Container containerWith(Long id, String dockerId) {
         User owner = new User("test@test.com", "pw", "name", true);
         ReflectionTestUtils.setField(owner, "id", 1L);
-        Container container = new Container(dockerId, "host", 10000, "root", "pw", 1, 512, owner);
+        Container container = Container.createPending(1, 512, owner);
+        container.activate(dockerId, "host", 10000, "root", "pw");
         ReflectionTestUtils.setField(container, "id", id);
         return container;
     }

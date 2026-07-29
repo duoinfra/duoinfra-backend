@@ -1,5 +1,5 @@
 package com.duoinfra.backend.container.domain;
 
 public enum ContainerStatus {
-    RUNNING, STOPPED, DELETED
+    CREATING, RUNNING, CREATE_FAILED, DELETING, DELETED, DELETE_FAILED
 }

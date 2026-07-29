@@ -55,8 +55,8 @@ class DashboardServiceTest {
     }
 
     private Container containerOwnedBy(Long containerId, User owner) {
-        Container container = new Container("docker-" + containerId, "220.117.221.158", 10000,
-                "root", "password1234", 1, 512, owner);
+        Container container = Container.createPending(1, 512, owner);
+        container.activate("docker-" + containerId, "220.117.221.158", 10000, "root", "password1234");
         ReflectionTestUtils.setField(container, "id", containerId);
         return container;
     }

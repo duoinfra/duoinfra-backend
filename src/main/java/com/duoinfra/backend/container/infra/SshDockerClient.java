@@ -18,7 +18,7 @@ import java.security.SecureRandom;
 import java.util.stream.Collectors;
 
 @Component
-@Profile("!local & !test")
+@Profile("!local & !test & !local-docker")
 public class SshDockerClient implements DockerClient {
 
     private static final String SSH_USERNAME = "root";

@@ -9,7 +9,8 @@ package com.duoinfra.backend.container.domain;
 public enum ContainerFailureReason {
     SSH_CONNECTION_FAILED,
     DOCKER_COMMAND_FAILED,
-    DB_UPDATE_FAILED;
+    DB_UPDATE_FAILED,
+    INSUFFICIENT_RESOURCE;
 
     public boolean requiresManualReview() {
         return this == DB_UPDATE_FAILED;

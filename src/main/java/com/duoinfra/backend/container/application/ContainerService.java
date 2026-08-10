@@ -1,9 +1,6 @@
 package com.duoinfra.backend.container.application;
 
-import com.duoinfra.backend.container.domain.Container;
-import com.duoinfra.backend.container.domain.ContainerFailureReason;
-import com.duoinfra.backend.container.domain.ContainerRepository;
-import com.duoinfra.backend.container.domain.ContainerStatus;
+import com.duoinfra.backend.container.domain.*;
 import com.duoinfra.backend.container.infra.SshConnectionException;
 import com.duoinfra.backend.user.domain.Role;
 import com.duoinfra.backend.user.domain.User;
@@ -12,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.duoinfra.backend.container.domain.ResourceAllocationConflictException;
 
 import java.util.List;
 
@@ -24,15 +22,21 @@ public class ContainerService {
     private final ContainerRepository containerRepository;
     private final ContainerPersistenceService containerPersistenceService;
     private final String physicalServerHost;
+    private final PhysicalServerService physicalServerService;
+    private final Long physicalServerId;
 
     public ContainerService(DockerClient dockerClient,
                             ContainerRepository containerRepository,
                             ContainerPersistenceService containerPersistenceService,
-                            @Value("${physical-server.host}") String physicalServerHost) {
+                            PhysicalServerService physicalServerService,
+                            @Value("${physical-server.host}") String physicalServerHost,
+                            @Value("${physical-server.id}") Long physicalServerId){
         this.dockerClient = dockerClient;
         this.containerRepository = containerRepository;
         this.containerPersistenceService = containerPersistenceService;
+        this.physicalServerService = physicalServerService;
         this.physicalServerHost = physicalServerHost;
+        this.physicalServerId = physicalServerId;
     }
 
     public ContainerResult provision(ContainerProvisionCommand command, Long requesterId) {
@@ -41,29 +45,43 @@ public class ContainerService {
         // Docker 작업 전에 CREATING 상태의 row를 먼저 INSERT해 둔다.
         // 이렇게 하면 이후 어느 단계에서 실패하더라도 갱신할 row가 이미 존재하므로
         // 실패 상태(CREATE_FAILED)와 그 원인을 반드시 남길 수 있다.
+        // 1. CREATING 상태로 먼저 저장
         Container pending = containerPersistenceService.saveContainer(
                 Container.createPending(command.cpu(), command.memory(), owner));
         Long id = pending.getId();
+        // 자원 예약 - 이 부분에서 자원이 부족하면 예외를 던지고 끝.
+        try {
+            physicalServerService.reserve(physicalServerId, command.cpu(), command.memory());
+        } catch (ResourceAllocationConflictException e) {
+            containerPersistenceService.markCreateFailed(id, ContainerFailureReason.INSUFFICIENT_RESOURCE); // 새로 추가할 사유
+            throw e;
+        }
 
+
+        // 2. 실제 Docker(라즈베리파이) 생성 시도
         DockerProvisionResult provisioned;
         try {
             provisioned = dockerClient.provisionContainer(command.cpu(), command.memory());
         } catch (SshConnectionException e) {
+            physicalServerService.release(physicalServerId, command.cpu(), command.memory()); // ★ 실패했으니 예약 반납
             containerPersistenceService.markCreateFailed(id, ContainerFailureReason.SSH_CONNECTION_FAILED);
             log.warn("서버 생성 실패(SSH 연결 실패). id={}", id, e);
             throw new ContainerProvisionFailedException(id, ContainerFailureReason.SSH_CONNECTION_FAILED, e);
         } catch (RuntimeException e) {
+            physicalServerService.release(physicalServerId, command.cpu(), command.memory());
             containerPersistenceService.markCreateFailed(id, ContainerFailureReason.DOCKER_COMMAND_FAILED);
             log.warn("서버 생성 실패(Docker 명령 실패). id={}", id, e);
             throw new ContainerProvisionFailedException(id, ContainerFailureReason.DOCKER_COMMAND_FAILED, e);
         }
 
+        // 3. 성공하면 DB에 최종 확정
         try {
             Container activated = containerPersistenceService.activateContainer(id, physicalServerHost, provisioned);
             return ContainerResult.from(activated);
         } catch (RuntimeException e) {
             // Docker 컨테이너는 이미 생성되었는데 그 결과를 DB에 반영하지 못했다.
             // 실물 자원과 DB 상태가 어긋난 고아 컨테이너일 수 있으므로, 어떤 컨테이너가 생성되었는지는 반드시 남긴다.
+            // "고아 컨테이너 처리 단계" -  Docker는 됐으나 DB 반영 실패
             log.error("CRITICAL: Docker 컨테이너({})는 생성되었지만 DB 반영에 실패했습니다. 고아 컨테이너 가능성이 있습니다. id={}",
                     provisioned.containerId(), id, e);
             try {

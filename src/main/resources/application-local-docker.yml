@@ -13,3 +13,4 @@ physical-server:
   port: 22
   username: local
   password: local
+  id: 1    # ★ 추가

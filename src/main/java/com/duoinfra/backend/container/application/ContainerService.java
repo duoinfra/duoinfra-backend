@@ -7,6 +7,7 @@ import com.duoinfra.backend.user.domain.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.duoinfra.backend.container.domain.ResourceAllocationConflictException;
@@ -50,11 +51,21 @@ public class ContainerService {
                 Container.createPending(command.cpu(), command.memory(), owner));
         Long id = pending.getId();
         // 자원 예약 - 이 부분에서 자원이 부족하면 예외를 던지고 끝.
-        try {
-            physicalServerService.reserve(physicalServerId, command.cpu(), command.memory());
-        } catch (ResourceAllocationConflictException e) {
-            containerPersistenceService.markCreateFailed(id, ContainerFailureReason.INSUFFICIENT_RESOURCE); // 새로 추가할 사유
-            throw e;
+        int maxRetries = 2;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                physicalServerService.reserve(physicalServerId, command.cpu(), command.memory());
+                break; // 성공하면 반복 종료
+            } catch (PessimisticLockingFailureException e) {
+                if (attempt == maxRetries) {
+                    containerPersistenceService.markCreateFailed(id, ContainerFailureReason.INSUFFICIENT_RESOURCE);
+                    throw ResourceAllocationConflictException.lockTimeout(physicalServerId);
+                }
+                // 다음 시도 전 짧게 대기 (선택)
+            } catch (ResourceAllocationConflictException e) {
+                containerPersistenceService.markCreateFailed(id, ContainerFailureReason.INSUFFICIENT_RESOURCE);
+                throw e;
+            }
         }
 
 
@@ -63,12 +74,22 @@ public class ContainerService {
         try {
             provisioned = dockerClient.provisionContainer(command.cpu(), command.memory());
         } catch (SshConnectionException e) {
-            physicalServerService.release(physicalServerId, command.cpu(), command.memory()); // ★ 실패했으니 예약 반납
+            // 자원 반납 시도
+            try{
+                physicalServerService.release(physicalServerId, command.cpu(), command.memory()); // ★ 실패했으니 예약 반납
+            } catch (RuntimeException releaseFailure){
+                log.error("CRITICAL: 자원 반납 실패. 수동 확인 필요. id={}", id, releaseFailure);
+            }
+            // 컨테이너 실패 상태 기록
             containerPersistenceService.markCreateFailed(id, ContainerFailureReason.SSH_CONNECTION_FAILED);
             log.warn("서버 생성 실패(SSH 연결 실패). id={}", id, e);
             throw new ContainerProvisionFailedException(id, ContainerFailureReason.SSH_CONNECTION_FAILED, e);
         } catch (RuntimeException e) {
-            physicalServerService.release(physicalServerId, command.cpu(), command.memory());
+            try {
+                physicalServerService.release(physicalServerId, command.cpu(), command.memory());
+            } catch (RuntimeException releaseFailure) {
+                log.error("CRITICAL: 자원 반납 실패. 수동 확인 필요. id={}", id, releaseFailure);
+            }
             containerPersistenceService.markCreateFailed(id, ContainerFailureReason.DOCKER_COMMAND_FAILED);
             log.warn("서버 생성 실패(Docker 명령 실패). id={}", id, e);
             throw new ContainerProvisionFailedException(id, ContainerFailureReason.DOCKER_COMMAND_FAILED, e);

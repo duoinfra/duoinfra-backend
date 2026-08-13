@@ -14,7 +14,7 @@ public class ResourceAllocationConflictException extends RuntimeException {
 
     public static ResourceAllocationConflictException lockTimeout(Long serverId) {
         return new ResourceAllocationConflictException(
-                "서버(id=" + serverId + ")의 자원 할당 요청이 몰려 처리할 수 없습니다. 잠시 후 다시 시도해주세요."
+                "서버(id=" + serverId + ")의 자원 락을 획득하지 못했습니다(타임아웃). 잠시 후 다시 시도해주세요."
         );
     }
 }

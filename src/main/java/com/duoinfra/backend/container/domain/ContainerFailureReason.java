@@ -10,6 +10,7 @@ public enum ContainerFailureReason {
     SSH_CONNECTION_FAILED,
     DOCKER_COMMAND_FAILED,
     DB_UPDATE_FAILED,
+    LOCK_ACQUISITION_FAILED,
     INSUFFICIENT_RESOURCE;
 
     public boolean requiresManualReview() {

@@ -12,7 +12,7 @@ public class ResourceAllocationConflictException extends RuntimeException {
         );
     }
 
-    public static ResourceAllocationConflictException lockTimeout(Long serverId) {
+    public static ResourceAllocationConflictException lockAcquisitionFailed(Long serverId) {
         return new ResourceAllocationConflictException(
                 "서버(id=" + serverId + ")의 자원 락을 획득하지 못했습니다(타임아웃). 잠시 후 다시 시도해주세요."
         );

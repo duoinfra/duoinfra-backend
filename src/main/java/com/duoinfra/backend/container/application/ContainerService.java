@@ -59,7 +59,7 @@ public class ContainerService {
             } catch (PessimisticLockingFailureException e) {
                 if (attempt == maxRetries) {
                     containerPersistenceService.markCreateFailed(id, ContainerFailureReason.LOCK_ACQUISITION_FAILED);
-                    throw ResourceAllocationConflictException.lockTimeout(physicalServerId);
+                    throw ResourceAllocationConflictException.lockAcquisitionFailed(physicalServerId);
                 }
                 // 다음 시도 전 짧게 대기 (선택)
             } catch (ResourceAllocationConflictException e) {

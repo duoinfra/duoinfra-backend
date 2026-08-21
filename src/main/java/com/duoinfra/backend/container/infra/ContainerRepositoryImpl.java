@@ -5,6 +5,7 @@ import com.duoinfra.backend.container.domain.ContainerRepository;
 import com.duoinfra.backend.container.domain.ContainerStatus;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -50,5 +51,10 @@ public class ContainerRepositoryImpl implements ContainerRepository {
     @Override
     public List<Container> findAllByOwnerIdExcludingStatus(Long ownerId, ContainerStatus excludedStatus) {
         return jpaRepository.findAllByOwner_IdAndStatusNot(ownerId, excludedStatus);
+    }
+
+    @Override
+    public List<Container> findAllByStatusAndCreatedAtBefore(ContainerStatus status, LocalDateTime threshold) {
+        return jpaRepository.findAllByStatusAndCreatedAtBefore(status, threshold);
     }
 }

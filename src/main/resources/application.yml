@@ -27,6 +27,7 @@ physical-server:
   port: ${PHYSICAL_SERVER_PORT:22}
   username: ${PHYSICAL_SERVER_USERNAME:pi}
   password: ${PHYSICAL_SERVER_PASSWORD}
+  id: ${PHYSICAL_SERVER_ID:1}    # ★ 추가
 
 jwt:
   secret: ${JWT_SECRET:local-development-only-jwt-secret-do-not-use-in-production}
